@@ -1,0 +1,22 @@
+{
+  "name": "child-health-api",
+  "version": "1.0.0",
+  "description": "Child Health API - WombTo18 Technical Assessment (Level 1)",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node --watch server.js",
+    "test": "node test/sample-tests.js"
+  },
+  "keywords": [
+    "child-health",
+    "express",
+    "api",
+    "vaccination-reminders"
+  ],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "express": "^4.21.2"
+  }
+}
