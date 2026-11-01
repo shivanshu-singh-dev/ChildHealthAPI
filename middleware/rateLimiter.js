@@ -29,7 +29,7 @@ const defaultLimiter = createRateLimiter();
 // Strict limiter for authentication endpoints (login & register)
 const authLimiter = createRateLimiter({
   windowMs: 15 * 60 * 1000, // 15 minutes
-  max: process.env.NODE_ENV === 'test' ? 100 : 5, // 5 attempts in production
+  max: process.env.NODE_ENV === 'test' ? 100 : (parseInt(process.env.AUTH_RATE_LIMIT_MAX, 10) || 15),
   message: {
     error: 'Too Many Requests',
     message: 'Too many authentication attempts from this IP. Please try again after 15 minutes.'

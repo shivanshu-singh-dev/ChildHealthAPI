@@ -1,10 +1,12 @@
 const { verifyToken } = require('../services/authService');
+const guardianRepository = require('../database/guardianRepository');
 
 /**
  * JWT Authentication Middleware
  * 
  * Verifies signed Bearer JWTs, enforces algorithm pinning (HS256),
- * issuer/audience validation, and binds decoded.sub to req.guardian.id.
+ * issuer/audience validation, validates active guardian existence in DB,
+ * and binds identity strictly to req.guardian.id.
  */
 function authenticate(req, res, next) {
   const authHeader = req.headers.authorization;
@@ -29,9 +31,27 @@ function authenticate(req, res, next) {
   try {
     const decoded = verifyToken(token);
 
+    if (!decoded.sub || typeof decoded.sub !== 'string') {
+      return res.status(401).json({
+        error: 'Unauthorized',
+        message: 'Invalid token subject claim.'
+      });
+    }
+
+    // Verify that the guardian account still exists in the database
+    const guardian = guardianRepository.findById(decoded.sub);
+    if (!guardian) {
+      return res.status(401).json({
+        error: 'Unauthorized',
+        message: 'Account associated with this token no longer exists.'
+      });
+    }
+
     // Bind identity exclusively from verified JWT subject claim
     req.guardian = {
-      id: decoded.sub
+      id: guardian.id,
+      name: guardian.name,
+      email: guardian.email
     };
 
     next();
