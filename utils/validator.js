@@ -1,30 +1,57 @@
-/**
- * Validation utilities for requests and date formats
- */
+const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const DATE_REGEX = /^\d{4}-\d{2}-\d{2}$/;
+
+const ALLOWED_REMINDER_STATUSES = new Set([
+  'scheduled',
+  'completed',
+  'pending',
+  'cancelled',
+  'overdue'
+]);
+
+const ALLOWED_CONSENT_STRINGS = new Set([
+  'granted',
+  'denied',
+  'pending',
+  'revoked'
+]);
 
 /**
- * Validates that a string is a valid calendar date in YYYY-MM-DD format.
+ * Validates whether a value is a non-empty string after trimming
+ * @param {any} value 
+ * @returns {boolean}
+ */
+function isNonEmptyString(value) {
+  return typeof value === 'string' && value.trim().length > 0;
+}
+
+/**
+ * Validates a valid UUID string
+ * @param {string} id 
+ * @returns {boolean}
+ */
+function isValidUUID(id) {
+  if (typeof id !== 'string') return false;
+  return UUID_REGEX.test(id.trim());
+}
+
+/**
+ * Validates calendar date in YYYY-MM-DD format
  * @param {string} dateStr 
  * @returns {boolean}
  */
 function isValidDateFormat(dateStr) {
   if (typeof dateStr !== 'string') return false;
-
-  // Check strict YYYY-MM-DD format
-  const regex = /^\d{4}-\d{2}-\d{2}$/;
-  if (!regex.test(dateStr)) return false;
+  if (!DATE_REGEX.test(dateStr)) return false;
 
   const [yearStr, monthStr, dayStr] = dateStr.split('-');
   const year = parseInt(yearStr, 10);
   const month = parseInt(monthStr, 10);
   const day = parseInt(dayStr, 10);
 
-  // JavaScript months are 0-indexed (0 = January, 11 = December)
   if (month < 1 || month > 12) return false;
 
   const date = new Date(year, month - 1, day);
-
-  // Check if calendar date matches input (handles invalid days like Feb 30)
   return (
     date.getFullYear() === year &&
     date.getMonth() === month - 1 &&
@@ -33,7 +60,7 @@ function isValidDateFormat(dateStr) {
 }
 
 /**
- * Checks whether a date string is not set in the future.
+ * Checks whether a date string is not in the future
  * @param {string} dateStr 
  * @returns {boolean}
  */
@@ -41,57 +68,87 @@ function isDateNotInFuture(dateStr) {
   const [year, month, day] = dateStr.split('-').map(Number);
   const date = new Date(year, month - 1, day);
   const now = new Date();
-  
-  // Set to end of today to allow registering children born today
   const endOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999);
   return date <= endOfToday;
 }
 
 /**
+ * Validates consent status value
+ * Accepts booleans (true/false) or allowed strings ('granted', 'denied', 'pending', 'revoked')
+ * @param {any} val 
+ * @returns {boolean}
+ */
+function isValidConsentStatus(val) {
+  if (typeof val === 'boolean') return true;
+  if (typeof val === 'string' && ALLOWED_CONSENT_STRINGS.has(val.trim().toLowerCase())) return true;
+  return false;
+}
+
+/**
+ * Validates reminder status string
+ * @param {any} val 
+ * @returns {boolean}
+ */
+function isValidReminderStatus(val) {
+  if (typeof val !== 'string') return false;
+  return ALLOWED_REMINDER_STATUSES.has(val.trim().toLowerCase());
+}
+
+/**
  * Validates child registration payload
- * Required fields: name, dateOfBirth, guardianName, state, consentStatus
  * @param {object} data 
  * @returns {{ isValid: boolean, errors: string[] }}
  */
 function validateChildRegistration(data) {
   const errors = [];
 
-  if (!data || typeof data !== 'object') {
-    return { isValid: false, errors: ['Request body must be a JSON object'] };
+  if (!data || typeof data !== 'object' || Array.isArray(data)) {
+    return { isValid: false, errors: ['Request body must be a valid JSON object'] };
   }
 
   // Name validation
-  if (!data.name || typeof data.name !== 'string' || data.name.trim().length === 0) {
-    errors.push("'name' is required and must be a non-empty string");
+  if (!('name' in data)) {
+    errors.push("'name' is required");
+  } else if (!isNonEmptyString(data.name)) {
+    errors.push("'name' cannot be empty or blank");
+  } else if (data.name.trim().length < 2 || data.name.trim().length > 100) {
+    errors.push("'name' must be between 2 and 100 characters");
   }
 
-  // Date of birth validation
-  if (!data.dateOfBirth || typeof data.dateOfBirth !== 'string') {
+  // Date of Birth validation
+  if (!('dateOfBirth' in data)) {
     errors.push("'dateOfBirth' is required in YYYY-MM-DD format");
+  } else if (!isNonEmptyString(data.dateOfBirth)) {
+    errors.push("'dateOfBirth' cannot be empty");
   } else if (!isValidDateFormat(data.dateOfBirth)) {
-    errors.push("'dateOfBirth' must be a valid calendar date in YYYY-MM-DD format (e.g., '2023-08-15')");
+    errors.push("'dateOfBirth' must be a valid calendar date in YYYY-MM-DD format (e.g. 2023-08-15)");
   } else if (!isDateNotInFuture(data.dateOfBirth)) {
     errors.push("'dateOfBirth' cannot be a future date");
   }
 
-  // Guardian name validation
-  if (!data.guardianName || typeof data.guardianName !== 'string' || data.guardianName.trim().length === 0) {
-    errors.push("'guardianName' is required and must be a non-empty string");
+  // Guardian Name validation
+  if (!('guardianName' in data)) {
+    errors.push("'guardianName' is required");
+  } else if (!isNonEmptyString(data.guardianName)) {
+    errors.push("'guardianName' cannot be empty or blank");
+  } else if (data.guardianName.trim().length < 2 || data.guardianName.trim().length > 100) {
+    errors.push("'guardianName' must be between 2 and 100 characters");
   }
 
   // State validation
-  if (!data.state || typeof data.state !== 'string' || data.state.trim().length === 0) {
-    errors.push("'state' is required and must be a non-empty string");
+  if (!('state' in data)) {
+    errors.push("'state' is required");
+  } else if (!isNonEmptyString(data.state)) {
+    errors.push("'state' cannot be empty or blank");
+  } else if (data.state.trim().length < 2 || data.state.trim().length > 50) {
+    errors.push("'state' must be between 2 and 50 characters");
   }
 
-  // Consent status validation
-  if (data.consentStatus === undefined || data.consentStatus === null) {
-    errors.push("'consentStatus' is required (e.g., true, false, 'granted', 'pending')");
-  } else if (
-    typeof data.consentStatus !== 'boolean' &&
-    (typeof data.consentStatus !== 'string' || data.consentStatus.trim().length === 0)
-  ) {
-    errors.push("'consentStatus' must be a boolean or a non-empty string");
+  // Consent Status validation
+  if (!('consentStatus' in data) || data.consentStatus === null || data.consentStatus === undefined) {
+    errors.push("'consentStatus' is required");
+  } else if (!isValidConsentStatus(data.consentStatus)) {
+    errors.push("'consentStatus' must be a boolean (true/false) or one of: 'granted', 'denied', 'pending', 'revoked'");
   }
 
   return {
@@ -102,37 +159,50 @@ function validateChildRegistration(data) {
 
 /**
  * Validates reminder creation payload
- * Required fields: childId, vaccineName, dueDate, status
  * @param {object} data 
  * @returns {{ isValid: boolean, errors: string[] }}
  */
 function validateReminderCreation(data) {
   const errors = [];
 
-  if (!data || typeof data !== 'object') {
-    return { isValid: false, errors: ['Request body must be a JSON object'] };
+  if (!data || typeof data !== 'object' || Array.isArray(data)) {
+    return { isValid: false, errors: ['Request body must be a valid JSON object'] };
   }
 
   // childId validation
-  if (!data.childId || typeof data.childId !== 'string' || data.childId.trim().length === 0) {
-    errors.push("'childId' is required and must be a non-empty string");
+  if (!('childId' in data)) {
+    errors.push("'childId' is required");
+  } else if (!isNonEmptyString(data.childId)) {
+    errors.push("'childId' cannot be empty or blank");
+  } else if (!isValidUUID(data.childId)) {
+    errors.push("'childId' must be a valid UUID format");
   }
 
   // vaccineName validation
-  if (!data.vaccineName || typeof data.vaccineName !== 'string' || data.vaccineName.trim().length === 0) {
-    errors.push("'vaccineName' is required and must be a non-empty string");
+  if (!('vaccineName' in data)) {
+    errors.push("'vaccineName' is required");
+  } else if (!isNonEmptyString(data.vaccineName)) {
+    errors.push("'vaccineName' cannot be empty or blank");
+  } else if (data.vaccineName.trim().length < 2 || data.vaccineName.trim().length > 100) {
+    errors.push("'vaccineName' must be between 2 and 100 characters");
   }
 
   // dueDate validation
-  if (!data.dueDate || typeof data.dueDate !== 'string') {
+  if (!('dueDate' in data)) {
     errors.push("'dueDate' is required in YYYY-MM-DD format");
+  } else if (!isNonEmptyString(data.dueDate)) {
+    errors.push("'dueDate' cannot be empty");
   } else if (!isValidDateFormat(data.dueDate)) {
-    errors.push("'dueDate' must be a valid calendar date in YYYY-MM-DD format (e.g., '2024-10-20')");
+    errors.push("'dueDate' must be a valid calendar date in YYYY-MM-DD format (e.g. 2026-11-20)");
   }
 
   // status validation
-  if (!data.status || typeof data.status !== 'string' || data.status.trim().length === 0) {
-    errors.push("'status' is required and must be a non-empty string (e.g., 'scheduled', 'pending', 'completed')");
+  if (!('status' in data)) {
+    errors.push("'status' is required");
+  } else if (!isNonEmptyString(data.status)) {
+    errors.push("'status' cannot be empty or blank");
+  } else if (!isValidReminderStatus(data.status)) {
+    errors.push("'status' must be one of: 'scheduled', 'completed', 'pending', 'cancelled', 'overdue'");
   }
 
   return {
@@ -141,9 +211,28 @@ function validateReminderCreation(data) {
   };
 }
 
+/**
+ * Validates URL ID parameter
+ * @param {string} id 
+ * @returns {{ isValid: boolean, error?: string }}
+ */
+function validateIdParam(id) {
+  if (!id || typeof id !== 'string' || id.trim().length === 0) {
+    return { isValid: false, error: 'ID parameter cannot be empty' };
+  }
+  if (!isValidUUID(id)) {
+    return { isValid: false, error: 'Child ID must be a valid UUID' };
+  }
+  return { isValid: true };
+}
+
 module.exports = {
+  isValidUUID,
   isValidDateFormat,
   isDateNotInFuture,
+  isValidConsentStatus,
+  isValidReminderStatus,
   validateChildRegistration,
-  validateReminderCreation
+  validateReminderCreation,
+  validateIdParam
 };

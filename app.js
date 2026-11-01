@@ -5,27 +5,19 @@ const healthRoutes = require('./routes/healthRoutes');
 const childRoutes = require('./routes/childRoutes');
 const reminderRoutes = require('./routes/reminderRoutes');
 
+// Import centralized error handler
+const errorHandler = require('./middleware/errorHandler');
+
 const app = express();
 
 // Parse JSON request bodies
 app.use(express.json());
 
-// Handle malformed JSON bodies gracefully
-app.use((err, req, res, next) => {
-  if (err instanceof SyntaxError && err.status === 400 && 'body' in err) {
-    return res.status(400).json({
-      error: 'Malformed JSON',
-      message: 'The request body is not valid JSON.'
-    });
-  }
-  next(err);
-});
-
 // Root welcome route
 app.get('/', (req, res) => {
   res.status(200).json({
-    message: 'Welcome to Child Health API (WombTo18 - Level 1)',
-    version: '1.0.0',
+    message: 'Welcome to Child Health API (WombTo18 - Level 2)',
+    version: '2.0.0',
     endpoints: {
       health: 'GET /health',
       registerChild: 'POST /children',
@@ -40,7 +32,7 @@ app.use('/health', healthRoutes);
 app.use('/children', childRoutes);
 app.use('/reminders', reminderRoutes);
 
-// Handle undefined routes (404 Not Found)
+// Catch-all handler for undefined routes
 app.use((req, res) => {
   res.status(404).json({
     error: 'Not Found',
@@ -48,13 +40,7 @@ app.use((req, res) => {
   });
 });
 
-// Global internal server error handler (500)
-app.use((err, req, res, next) => {
-  console.error('Unhandled server error:', err);
-  res.status(500).json({
-    error: 'Internal Server Error',
-    message: 'An unexpected error occurred on the server.'
-  });
-});
+// Centralized error handling middleware
+app.use(errorHandler);
 
 module.exports = app;

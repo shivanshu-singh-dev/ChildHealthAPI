@@ -1,22 +1,29 @@
 {
   "name": "child-health-api",
-  "version": "1.0.0",
-  "description": "Child Health API - WombTo18 Technical Assessment (Level 1)",
+  "version": "2.0.0",
+  "description": "Child Health API - WombTo18 Technical Assessment (Level 2)",
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
     "dev": "node --watch server.js",
-    "test": "node test/sample-tests.js"
+    "test": "jest --runInBand",
+    "test:coverage": "jest --runInBand --coverage"
   },
   "keywords": [
     "child-health",
     "express",
     "api",
-    "vaccination-reminders"
+    "vaccination-reminders",
+    "sqlite"
   ],
   "author": "",
   "license": "ISC",
   "dependencies": {
+    "better-sqlite3": "^13.0.3",
     "express": "^4.21.2"
+  },
+  "devDependencies": {
+    "jest": "^29.7.0",
+    "supertest": "^7.1.0"
   }
 }

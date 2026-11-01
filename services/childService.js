@@ -1,8 +1,8 @@
 const crypto = require('crypto');
-const { children } = require('../storage/memoryStore');
+const childRepository = require('../database/childRepository');
 
 /**
- * Register a new child and store in memory
+ * Registers a new child in SQLite storage
  * @param {object} childData 
  * @returns {object} created child profile
  */
@@ -10,33 +10,32 @@ function registerChild(childData) {
   const newChild = {
     id: crypto.randomUUID(),
     name: childData.name.trim(),
-    dateOfBirth: childData.dateOfBirth,
+    dateOfBirth: childData.dateOfBirth.trim(),
     guardianName: childData.guardianName.trim(),
     state: childData.state.trim(),
     consentStatus: childData.consentStatus,
     createdAt: new Date().toISOString()
   };
 
-  children.set(newChild.id, newChild);
-  return newChild;
+  return childRepository.create(newChild);
 }
 
 /**
- * Retrieve a child profile by ID
+ * Retrieves a child profile by ID
  * @param {string} id 
- * @returns {object|null} child profile if found, otherwise null
+ * @returns {object|null} child profile or null
  */
 function getChildById(id) {
-  return children.get(id) || null;
+  return childRepository.findById(id);
 }
 
 /**
- * Check if a child exists by ID
+ * Checks whether a child exists by ID
  * @param {string} id 
  * @returns {boolean}
  */
 function childExists(id) {
-  return children.has(id);
+  return childRepository.exists(id);
 }
 
 module.exports = {

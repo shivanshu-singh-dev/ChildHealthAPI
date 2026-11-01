@@ -1,12 +1,13 @@
 const http = require('http');
 const app = require('../app');
-const { resetStore } = require('../storage/memoryStore');
+const { resetDatabase } = require('../database/db');
 
 let server;
 let baseUrl;
 
 async function runTests() {
-  console.log('\n🚀 Starting Child Health API Automated Test Suite (Level 1)\n');
+  process.env.NODE_ENV = 'test';
+  console.log('\n🚀 Starting Child Health API Automated Test Suite (Level 1 & 2)\n');
 
   // Start app on random available port
   server = http.createServer(app);
@@ -35,7 +36,7 @@ async function runTests() {
   }
 
   try {
-    resetStore();
+    resetDatabase();
 
     // 1. Health check
     await assertTest('GET /health returns 200 and UP status', async () => {
@@ -185,7 +186,7 @@ async function runTests() {
     // 9. Create reminder for non-existent child (Verify child existence check)
     await assertTest('POST /reminders returns 404 when childId does not exist', async () => {
       const fakeReminderPayload = {
-        childId: 'non-existent-child-id',
+        childId: '00000000-0000-0000-0000-000000000000',
         vaccineName: 'BCG',
         dueDate: '2026-11-20',
         status: 'scheduled'
