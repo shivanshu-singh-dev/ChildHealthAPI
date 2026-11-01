@@ -2,9 +2,12 @@
 workspace:
   id: 08264572-2b91-4167-8e42-273b0e113144
 
+# Each entry here maps a local resource to one or more corresponding objects in Postman Cloud
+
 cloudResources:
   collections:
-    ../postman/collections/Child Health API: 0d461b37-3da6-4625-a9e8-dd1b4e4e4d97
+    ../postman/collections/Child Health API: 9b952651-70bc-4748-8e38-6806211e5dbf
+    ../postman/collections/Child Health API Copy: a6848a12-0c5f-473c-932f-ea2f14c7dea3
 
 # All resources in the `postman/` folder are automatically registered in Local View.
 # Point to additional files outside the `postman/` folder to register them individually. Example:
