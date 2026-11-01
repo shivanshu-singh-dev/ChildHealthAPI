@@ -68,7 +68,6 @@ erDiagram
         TEXT name "Guardian full name (2-100 chars)"
         TEXT email UK "Unique email address"
         TEXT password_hash "Bcrypt hash (10 salt rounds)"
-        TEXT auth_token "Optional legacy token"
         TEXT created_at "ISO 8601 creation timestamp"
     }
 
