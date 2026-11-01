@@ -3,13 +3,25 @@ const bcrypt = require('bcryptjs');
 const crypto = require('crypto');
 const guardianRepository = require('../database/guardianRepository');
 
-const JWT_SECRET = process.env.JWT_SECRET || 'child-health-api-jwt-secret-key-2026';
 const JWT_EXPIRES_IN = process.env.JWT_EXPIRES_IN || '1h';
 const JWT_ISSUER = 'child-health-api';
 const JWT_AUDIENCE = 'child-health-api';
 
 // Pre-computed dummy hash to prevent timing-based email enumeration
 const DUMMY_HASH = '$2b$10$KZmSJGKP1IrAWiO0ZhHTVOKcWsUL5rc.05jb8EiadStS7wwo7P7Mm';
+
+/**
+ * Retrieves the JWT secret strictly from environment variables.
+ * Fails fast if JWT_SECRET is not configured.
+ * @returns {string}
+ */
+function getJwtSecret() {
+  const secret = process.env.JWT_SECRET;
+  if (!secret) {
+    throw new Error('FATAL: JWT_SECRET environment variable is not defined. Please set it in your .env file.');
+  }
+  return secret;
+}
 
 /**
  * Generates a signed JWT with minimal payload
@@ -23,7 +35,7 @@ function generateToken(guardianId) {
     aud: JWT_AUDIENCE
   };
 
-  return jwt.sign(payload, JWT_SECRET, {
+  return jwt.sign(payload, getJwtSecret(), {
     algorithm: 'HS256',
     expiresIn: JWT_EXPIRES_IN
   });
@@ -35,7 +47,7 @@ function generateToken(guardianId) {
  * @returns {object} decoded token payload
  */
 function verifyToken(token) {
-  return jwt.verify(token, JWT_SECRET, {
+  return jwt.verify(token, getJwtSecret(), {
     algorithms: ['HS256'],
     issuer: JWT_ISSUER,
     audience: JWT_AUDIENCE
@@ -124,6 +136,7 @@ function login({ email, password }) {
 }
 
 module.exports = {
+  getJwtSecret,
   generateToken,
   verifyToken,
   register,
