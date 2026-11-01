@@ -1,5 +1,6 @@
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const DATE_REGEX = /^\d{4}-\d{2}-\d{2}$/;
+const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 const ALLOWED_REMINDER_STATUSES = new Set([
   'scheduled',
@@ -245,6 +246,76 @@ function validateIdParam(id) {
   return { isValid: true };
 }
 
+/**
+ * Validates guardian registration payload
+ * @param {object} data 
+ * @returns {{ isValid: boolean, errors: string[] }}
+ */
+function validateRegister(data) {
+  const errors = [];
+
+  if (!data || typeof data !== 'object' || Array.isArray(data)) {
+    return { isValid: false, errors: ['Request body must be a valid JSON object'] };
+  }
+
+  // Name
+  if (!('name' in data) || !isNonEmptyString(data.name)) {
+    errors.push("'name' is required and cannot be empty");
+  } else if (data.name.trim().length < 2 || data.name.trim().length > 100) {
+    errors.push("'name' must be between 2 and 100 characters");
+  }
+
+  // Email
+  if (!('email' in data) || !isNonEmptyString(data.email)) {
+    errors.push("'email' is required");
+  } else if (!EMAIL_REGEX.test(data.email.trim())) {
+    errors.push("'email' must be a valid email address");
+  }
+
+  // Password
+  if (!('password' in data) || typeof data.password !== 'string' || data.password.length === 0) {
+    errors.push("'password' is required");
+  } else if (data.password.length < 5) {
+    errors.push("'password' must be at least 5 characters long");
+  } else if (Buffer.byteLength(data.password, 'utf8') > 72) {
+    errors.push("'password' cannot exceed 72 bytes (bcrypt input limitation)");
+  }
+
+  return {
+    isValid: errors.length === 0,
+    errors
+  };
+}
+
+/**
+ * Validates login payload
+ * @param {object} data 
+ * @returns {{ isValid: boolean, errors: string[] }}
+ */
+function validateLogin(data) {
+  const errors = [];
+
+  if (!data || typeof data !== 'object' || Array.isArray(data)) {
+    return { isValid: false, errors: ['Request body must be a valid JSON object'] };
+  }
+
+  const identifier = data.email || data.username;
+  if (!identifier || typeof identifier !== 'string' || identifier.trim().length === 0) {
+    errors.push("'email' or 'username' is required");
+  }
+
+  if (!('password' in data) || typeof data.password !== 'string' || data.password.length === 0) {
+    errors.push("'password' is required");
+  } else if (Buffer.byteLength(data.password, 'utf8') > 72) {
+    errors.push("'password' cannot exceed 72 bytes");
+  }
+
+  return {
+    isValid: errors.length === 0,
+    errors
+  };
+}
+
 module.exports = {
   isValidUUID,
   isValidDateFormat,
@@ -254,5 +325,7 @@ module.exports = {
   isValidReminderStatus,
   validateChildRegistration,
   validateReminderCreation,
-  validateIdParam
+  validateIdParam,
+  validateRegister,
+  validateLogin
 };

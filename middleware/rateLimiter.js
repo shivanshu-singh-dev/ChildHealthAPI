@@ -23,9 +23,21 @@ function createRateLimiter(options = {}) {
   });
 }
 
+// Global API rate limiter
 const defaultLimiter = createRateLimiter();
+
+// Strict limiter for authentication endpoints (login & register)
+const authLimiter = createRateLimiter({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: process.env.NODE_ENV === 'test' ? 100 : 5, // 5 attempts in production
+  message: {
+    error: 'Too Many Requests',
+    message: 'Too many authentication attempts from this IP. Please try again after 15 minutes.'
+  }
+});
 
 module.exports = {
   createRateLimiter,
-  defaultLimiter
+  defaultLimiter,
+  authLimiter
 };

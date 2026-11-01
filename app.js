@@ -9,6 +9,7 @@ const errorHandler = require('./middleware/errorHandler');
 
 // Import routes
 const healthRoutes = require('./routes/healthRoutes');
+const authRoutes = require('./routes/authRoutes');
 const childRoutes = require('./routes/childRoutes');
 const reminderRoutes = require('./routes/reminderRoutes');
 
@@ -39,16 +40,19 @@ app.get('/', (req, res) => {
     message: 'Welcome to Child Health API',
     version: '2.0.0',
     endpoints: {
-      health: 'GET /health',
-      registerChild: 'POST /children (Requires Bearer token)',
-      getChild: 'GET /children/:id (Requires Bearer token)',
-      createReminder: 'POST /reminders (Requires Bearer token)'
+      health: 'GET /health (Public)',
+      register: 'POST /auth/register (Public)',
+      login: 'POST /auth/login (Public)',
+      registerChild: 'POST /children (Requires Bearer JWT)',
+      getChild: 'GET /children/:id (Requires Bearer JWT)',
+      createReminder: 'POST /reminders (Requires Bearer JWT)'
     }
   });
 });
 
 // Mount modular routes
 app.use('/health', healthRoutes);
+app.use('/auth', authRoutes);
 app.use('/children', childRoutes);
 app.use('/reminders', reminderRoutes);
 

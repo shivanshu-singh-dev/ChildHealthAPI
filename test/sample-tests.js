@@ -23,9 +23,8 @@ async function runTests() {
   let passed = 0;
   let failed = 0;
 
-  const authHeaders = {
-    'Content-Type': 'application/json',
-    'Authorization': 'Bearer mock-token-priya'
+  let authHeaders = {
+    'Content-Type': 'application/json'
   };
 
   async function assertTest(name, fn) {
@@ -42,6 +41,19 @@ async function runTests() {
 
   try {
     resetDatabase();
+
+    // 0. Authenticate test user1 to receive real JWT
+    await assertTest('POST /auth/login successfully returns signed JWT for user1', async () => {
+      const res = await fetch(`${baseUrl}/auth/login`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: 'user1@example.com', password: 'user1' })
+      });
+      if (res.status !== 200) throw new Error(`Expected 200, got ${res.status}`);
+      const data = await res.json();
+      if (!data.token) throw new Error('JWT token missing from response');
+      authHeaders['Authorization'] = `Bearer ${data.token}`;
+    });
 
     // 1. Health check (Public)
     await assertTest('GET /health returns 200 and UP status', async () => {
@@ -86,7 +98,7 @@ async function runTests() {
     // 3. Retrieve registered child
     await assertTest('GET /children/:id retrieves existing child profile (200 OK)', async () => {
       const res = await fetch(`${baseUrl}/children/${registeredChildId}`, {
-        headers: { 'Authorization': 'Bearer mock-token-priya' }
+        headers: { 'Authorization': authHeaders['Authorization'] }
       });
       if (res.status !== 200) throw new Error(`Expected 200, got ${res.status}`);
       const data = await res.json();
@@ -98,7 +110,7 @@ async function runTests() {
     await assertTest('GET /children/:id returns 404 for non-existent child', async () => {
       const fakeId = '00000000-0000-0000-0000-000000000000';
       const res = await fetch(`${baseUrl}/children/${fakeId}`, {
-        headers: { 'Authorization': 'Bearer mock-token-priya' }
+        headers: { 'Authorization': authHeaders['Authorization'] }
       });
       if (res.status !== 404) throw new Error(`Expected 404, got ${res.status}`);
       const data = await res.json();
@@ -249,7 +261,7 @@ async function runTests() {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': 'Bearer mock-token-priya'
+          'Authorization': authHeaders['Authorization']
         },
         body: '{ "name": "Broken JSON", '
       });

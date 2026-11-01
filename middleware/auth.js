@@ -1,10 +1,10 @@
-const guardianRepository = require('../database/guardianRepository');
+const { verifyToken } = require('../services/authService');
 
 /**
- * Mock Bearer Authentication Middleware
+ * JWT Authentication Middleware
  * 
- * Validates the Authorization header and attaches the authenticated
- * guardian record to the request.
+ * Verifies signed Bearer JWTs, enforces algorithm pinning (HS256),
+ * issuer/audience validation, and binds decoded.sub to req.guardian.id.
  */
 function authenticate(req, res, next) {
   const authHeader = req.headers.authorization;
@@ -25,18 +25,29 @@ function authenticate(req, res, next) {
   }
 
   const token = parts[1].trim();
-  const guardian = guardianRepository.findByToken(token);
 
-  if (!guardian) {
+  try {
+    const decoded = verifyToken(token);
+
+    // Bind identity exclusively from verified JWT subject claim
+    req.guardian = {
+      id: decoded.sub
+    };
+
+    next();
+  } catch (err) {
+    if (err.name === 'TokenExpiredError') {
+      return res.status(401).json({
+        error: 'Unauthorized',
+        message: 'Authorization token has expired. Please log in again.'
+      });
+    }
+
     return res.status(401).json({
       error: 'Unauthorized',
-      message: 'Invalid or expired authorization token'
+      message: 'Invalid or tampered authorization token.'
     });
   }
-
-  // Attach authenticated identity to request context
-  req.guardian = guardian;
-  next();
 }
 
 module.exports = authenticate;

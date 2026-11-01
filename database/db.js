@@ -4,27 +4,59 @@ const fs = require('fs');
 
 let dbInstance = null;
 
+// Pre-computed bcrypt hashes (cost factor: 10) for test credentials
+const TEST_USERS = [
+  {
+    id: 'guardian-user1',
+    name: 'User One',
+    email: 'user1@example.com',
+    passwordHash: '$2b$10$KZmSJGKP1IrAWiO0ZhHTVOKcWsUL5rc.05jb8EiadStS7wwo7P7Mm', // password: user1
+    createdAt: '2026-01-01T00:00:00.000Z'
+  },
+  {
+    id: 'guardian-user2',
+    name: 'User Two',
+    email: 'user2@example.com',
+    passwordHash: '$2b$10$ImxM.f8aYONchsESM5r/M.habO48X5DbLkalNMA6uwDx7WS1chU9G', // password: user2
+    createdAt: '2026-01-01T00:00:00.000Z'
+  },
+  {
+    id: 'guardian-user3',
+    name: 'User Three',
+    email: 'user3@example.com',
+    passwordHash: '$2b$10$lNNLOjy7u0QIsA6ieUxiZOr6knrieHXL3aI/.QaELB.y.BaRcvLua', // password: user3
+    createdAt: '2026-01-01T00:00:00.000Z'
+  }
+];
+
 function seedDefaultGuardians(db) {
-  const stmt = db.prepare(`
-    INSERT OR IGNORE INTO guardians (id, name, email, auth_token, created_at)
-    VALUES (?, ?, ?, ?, ?)
-  `);
+  const tableInfo = db.prepare("PRAGMA table_info(guardians)").all();
+  const hasAuthToken = tableInfo.some(col => col.name === 'auth_token');
 
-  stmt.run(
-    'guardian-101',
-    'Priya Sharma',
-    'priya.sharma@example.com',
-    'mock-token-priya',
-    '2026-01-01T00:00:00.000Z'
-  );
+  const sql = hasAuthToken
+    ? `INSERT INTO guardians (id, name, email, password_hash, auth_token, created_at)
+       VALUES (?, ?, ?, ?, ?, ?)
+       ON CONFLICT(id) DO UPDATE SET
+         name = excluded.name,
+         email = excluded.email,
+         password_hash = excluded.password_hash,
+         auth_token = excluded.auth_token`
+    : `INSERT INTO guardians (id, name, email, password_hash, created_at)
+       VALUES (?, ?, ?, ?, ?)
+       ON CONFLICT(id) DO UPDATE SET
+         name = excluded.name,
+         email = excluded.email,
+         password_hash = excluded.password_hash`;
 
-  stmt.run(
-    'guardian-102',
-    'Rohit Sen',
-    'rohit.sen@example.com',
-    'mock-token-rohit',
-    '2026-01-01T00:00:00.000Z'
-  );
+  const stmt = db.prepare(sql);
+
+  for (const user of TEST_USERS) {
+    if (hasAuthToken) {
+      stmt.run(user.id, user.name, user.email, user.passwordHash, `token-${user.id}`, user.createdAt);
+    } else {
+      stmt.run(user.id, user.name, user.email, user.passwordHash, user.createdAt);
+    }
+  }
 }
 
 function initializeSchema(db) {
@@ -34,12 +66,21 @@ function initializeSchema(db) {
       id TEXT PRIMARY KEY,
       name TEXT NOT NULL,
       email TEXT UNIQUE NOT NULL,
-      auth_token TEXT UNIQUE NOT NULL,
+      password_hash TEXT NOT NULL,
       created_at TEXT NOT NULL
     );
   `);
 
-  // Seed default mock guardians first
+  // Migrate existing guardians table if password_hash is absent
+  const guardianTableInfo = db.prepare("PRAGMA table_info(guardians)").all();
+  const hasPasswordHash = guardianTableInfo.some(col => col.name === 'password_hash');
+  if (!hasPasswordHash && guardianTableInfo.length > 0) {
+    db.exec(`
+      ALTER TABLE guardians ADD COLUMN password_hash TEXT;
+    `);
+  }
+
+  // Seed default test guardians
   seedDefaultGuardians(db);
 
   // 2. Create children table if it doesn't exist
@@ -63,7 +104,7 @@ function initializeSchema(db) {
   if (!hasGuardianId && tableInfo.length > 0) {
     db.exec(`
       ALTER TABLE children ADD COLUMN guardian_id TEXT REFERENCES guardians(id) ON DELETE CASCADE;
-      UPDATE children SET guardian_id = 'guardian-101' WHERE guardian_id IS NULL;
+      UPDATE children SET guardian_id = 'guardian-user1' WHERE guardian_id IS NULL;
     `);
   }
 
@@ -79,7 +120,7 @@ function initializeSchema(db) {
       FOREIGN KEY (child_id) REFERENCES children(id) ON DELETE CASCADE
     );
 
-    CREATE INDEX IF NOT EXISTS idx_guardians_auth_token ON guardians(auth_token);
+    CREATE INDEX IF NOT EXISTS idx_guardians_email ON guardians(email);
     CREATE INDEX IF NOT EXISTS idx_children_guardian_id ON children(guardian_id);
     CREATE INDEX IF NOT EXISTS idx_reminders_child_id ON vaccination_reminders(child_id);
   `);
