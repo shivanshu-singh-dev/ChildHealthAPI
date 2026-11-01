@@ -1,28 +1,48 @@
 const express = require('express');
+const helmet = require('helmet');
+const cors = require('cors');
+
+// Import middleware
+const { defaultLimiter } = require('./middleware/rateLimiter');
+const safeLogger = require('./middleware/logger');
+const errorHandler = require('./middleware/errorHandler');
 
 // Import routes
 const healthRoutes = require('./routes/healthRoutes');
 const childRoutes = require('./routes/childRoutes');
 const reminderRoutes = require('./routes/reminderRoutes');
 
-// Import centralized error handler
-const errorHandler = require('./middleware/errorHandler');
-
 const app = express();
 
-// Parse JSON request bodies
-app.use(express.json());
+// 1. Security Headers (Helmet)
+app.use(helmet());
+
+// 2. Cross-Origin Resource Sharing (CORS)
+app.use(cors({
+  origin: process.env.CORS_ORIGIN || '*',
+  methods: ['GET', 'POST'],
+  allowedHeaders: ['Content-Type', 'Authorization']
+}));
+
+// 3. Global Rate Limiting
+app.use(defaultLimiter);
+
+// 4. Safe Request Logging (Redacting PII and Authorization headers)
+app.use(safeLogger);
+
+// 5. Restrict request body size to 10kb
+app.use(express.json({ limit: '10kb' }));
 
 // Root welcome route
 app.get('/', (req, res) => {
   res.status(200).json({
-    message: 'Welcome to Child Health API (WombTo18 - Level 2)',
+    message: 'Welcome to Child Health API',
     version: '2.0.0',
     endpoints: {
       health: 'GET /health',
-      registerChild: 'POST /children',
-      getChild: 'GET /children/:id',
-      createReminder: 'POST /reminders'
+      registerChild: 'POST /children (Requires Bearer token)',
+      getChild: 'GET /children/:id (Requires Bearer token)',
+      createReminder: 'POST /reminders (Requires Bearer token)'
     }
   });
 });

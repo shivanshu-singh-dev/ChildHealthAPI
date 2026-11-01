@@ -14,7 +14,7 @@ try {
 
 const server = app.listen(PORT, () => {
   console.log(`===============================================`);
-  console.log(` Child Health API (Level 2) is running!`);
+  console.log(` Child Health API is running!`);
   console.log(` Listening on: http://localhost:${PORT}`);
   console.log(` Health check:  http://localhost:${PORT}/health`);
   console.log(` Storage:       SQLite persistent storage`);

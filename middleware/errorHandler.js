@@ -6,7 +6,15 @@
  */
 
 function errorHandler(err, req, res, next) {
-  // 1. Handle JSON parsing syntax errors (body-parser)
+  // 1. Handle payload size limit exceeded (413)
+  if (err.type === 'entity.too.large' || err.status === 413) {
+    return res.status(413).json({
+      error: 'Payload Too Large',
+      message: 'Request payload exceeds the maximum allowed size limit (10kb).'
+    });
+  }
+
+  // 2. Handle JSON parsing syntax errors (body-parser)
   if (err instanceof SyntaxError && err.status === 400 && 'body' in err) {
     return res.status(400).json({
       error: 'Malformed JSON',
@@ -14,7 +22,7 @@ function errorHandler(err, req, res, next) {
     });
   }
 
-  // 2. Handle known operational Application Errors (AppError)
+  // 3. Handle known operational Application Errors (AppError)
   if (err.isOperational) {
     const response = {
       error: err.message
@@ -25,12 +33,12 @@ function errorHandler(err, req, res, next) {
     return res.status(err.statusCode || 400).json(response);
   }
 
-  // 3. Handle SQLite Database Errors
+  // 4. Handle SQLite Database Errors
   if (err.code && typeof err.code === 'string' && err.code.startsWith('SQLITE_')) {
     if (err.code === 'SQLITE_CONSTRAINT_FOREIGNKEY') {
       return res.status(404).json({
-        error: 'Child not found',
-        message: 'The specified child ID does not exist.'
+        error: 'Resource not found',
+        message: 'The referenced entity does not exist in the database.'
       });
     }
 
@@ -48,8 +56,7 @@ function errorHandler(err, req, res, next) {
     });
   }
 
-  // 4. Handle unexpected/internal errors
-  // Log server-side for diagnostics, but return sanitized message to client
+  // 5. Handle unexpected/internal errors
   console.error('[Unhandled Server Error]', err);
 
   return res.status(500).json({

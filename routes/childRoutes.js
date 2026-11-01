@@ -1,6 +1,10 @@
 const express = require('express');
 const router = express.Router();
 const childController = require('../controllers/childController');
+const authenticate = require('../middleware/auth');
+
+// All child endpoints require guardian authentication
+router.use(authenticate);
 
 // POST /children - Register a child
 router.post('/', childController.registerChild);

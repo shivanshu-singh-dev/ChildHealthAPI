@@ -3,42 +3,34 @@ const { getDatabase } = require('./db');
 function mapRowToChild(row) {
   if (!row) return null;
 
-  let consentStatus = row.consent_status;
-  if (consentStatus === 'true') {
-    consentStatus = true;
-  } else if (consentStatus === 'false') {
-    consentStatus = false;
-  }
-
   return {
     id: row.id,
+    guardianId: row.guardian_id,
     name: row.name,
     dateOfBirth: row.date_of_birth,
     guardianName: row.guardian_name,
     state: row.state,
-    consentStatus,
+    consentStatus: row.consent_status,
     createdAt: row.created_at
   };
 }
 
 function create(child) {
   const db = getDatabase();
-  const consentString = typeof child.consentStatus === 'boolean'
-    ? (child.consentStatus ? 'true' : 'false')
-    : String(child.consentStatus);
 
   const stmt = db.prepare(`
-    INSERT INTO children (id, name, date_of_birth, guardian_name, state, consent_status, created_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?)
+    INSERT INTO children (id, guardian_id, name, date_of_birth, guardian_name, state, consent_status, created_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
   `);
 
   stmt.run(
     child.id,
+    child.guardianId,
     child.name,
     child.dateOfBirth,
     child.guardianName,
     child.state,
-    consentString,
+    child.consentStatus,
     child.createdAt
   );
 

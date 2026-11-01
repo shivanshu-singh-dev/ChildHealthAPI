@@ -1,23 +1,39 @@
 const crypto = require('crypto');
 const childRepository = require('../database/childRepository');
+const { normalizeConsentStatus } = require('../utils/validator');
 
 /**
- * Registers a new child in SQLite storage
+ * Registers a new child in SQLite storage linked to an authenticated guardian
  * @param {object} childData 
+ * @param {string} guardianId 
  * @returns {object} created child profile
  */
-function registerChild(childData) {
+function registerChild(childData, guardianId) {
+  const normalizedConsent = normalizeConsentStatus(childData.consentStatus) || 'granted';
+
   const newChild = {
     id: crypto.randomUUID(),
+    guardianId: guardianId,
     name: childData.name.trim(),
     dateOfBirth: childData.dateOfBirth.trim(),
     guardianName: childData.guardianName.trim(),
     state: childData.state.trim(),
-    consentStatus: childData.consentStatus,
+    consentStatus: normalizedConsent,
     createdAt: new Date().toISOString()
   };
 
-  return childRepository.create(newChild);
+  childRepository.create(newChild);
+
+  // Return sanitized child profile (omit internal database linkage)
+  return {
+    id: newChild.id,
+    name: newChild.name,
+    dateOfBirth: newChild.dateOfBirth,
+    guardianName: newChild.guardianName,
+    state: newChild.state,
+    consentStatus: newChild.consentStatus,
+    createdAt: newChild.createdAt
+  };
 }
 
 /**

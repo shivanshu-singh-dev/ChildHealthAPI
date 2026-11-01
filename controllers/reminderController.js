@@ -2,7 +2,7 @@ const reminderService = require('../services/reminderService');
 const { validateReminderCreation } = require('../utils/validator');
 
 /**
- * Creates a vaccination reminder
+ * Creates a vaccination reminder with guardian ownership and consent enforcement
  * POST /reminders
  */
 function createReminder(req, res, next) {
@@ -15,7 +15,7 @@ function createReminder(req, res, next) {
       });
     }
 
-    const result = reminderService.createReminder(req.body);
+    const result = reminderService.createReminder(req.body, req.guardian.id);
 
     if (result.notFound) {
       return res.status(404).json({
@@ -24,7 +24,29 @@ function createReminder(req, res, next) {
       });
     }
 
-    return res.status(201).json(result.reminder);
+    if (result.forbidden) {
+      return res.status(403).json({
+        error: 'Forbidden',
+        message: result.message
+      });
+    }
+
+    if (result.consentDenied) {
+      return res.status(403).json({
+        error: 'Consent Required',
+        message: result.message
+      });
+    }
+
+    // Expose only required reminder fields
+    return res.status(201).json({
+      id: result.reminder.id,
+      childId: result.reminder.childId,
+      vaccineName: result.reminder.vaccineName,
+      dueDate: result.reminder.dueDate,
+      status: result.reminder.status,
+      createdAt: result.reminder.createdAt
+    });
   } catch (err) {
     next(err);
   }

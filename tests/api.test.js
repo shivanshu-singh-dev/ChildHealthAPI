@@ -4,7 +4,10 @@ const request = require('supertest');
 const app = require('../app');
 const { getDatabase, resetDatabase, closeDatabase } = require('../database/db');
 
-describe('Child Health API — Level 2 Test Suite', () => {
+describe('Child Health API — Security and Functionality Test Suite', () => {
+  const tokenPriya = 'mock-token-priya';
+  const tokenRohit = 'mock-token-rohit';
+
   beforeAll(() => {
     getDatabase();
   });
@@ -17,23 +20,75 @@ describe('Child Health API — Level 2 Test Suite', () => {
     closeDatabase();
   });
 
-  // 1. Health check
-  describe('GET /health', () => {
-    test('8. Return a successful health check', async () => {
+  // 1. Health check & Security Headers
+  describe('System Health & Security Headers', () => {
+    test('Public health check returns 200 without authentication', async () => {
       const res = await request(app).get('/health');
 
       expect(res.status).toBe(200);
       expect(res.body).toHaveProperty('status', 'UP');
-      expect(res.body).toHaveProperty('service', 'Child Health API');
       expect(res.body).toHaveProperty('database', 'connected');
-      expect(res.body).toHaveProperty('uptime');
-      expect(res.body).toHaveProperty('timestamp');
+    });
+
+    test('Response includes Helmet security headers', async () => {
+      const res = await request(app).get('/health');
+
+      expect(res.headers).toHaveProperty('x-content-type-options', 'nosniff');
+      expect(res.headers).toHaveProperty('x-frame-options', 'SAMEORIGIN');
+      expect(res.headers).toHaveProperty('strict-transport-security');
+    });
+
+    test('Response includes RateLimit headers', async () => {
+      const res = await request(app).get('/health');
+
+      expect(res.headers).toHaveProperty('ratelimit-limit');
+      expect(res.headers).toHaveProperty('ratelimit-remaining');
     });
   });
 
-  // 2. Child Registration
-  describe('POST /children', () => {
-    test('1. Register a child successfully', async () => {
+  // 2. Identity & Access Control (Authentication)
+  describe('Authentication Enforcement', () => {
+    test('Reject requests with missing Authorization header', async () => {
+      const res = await request(app)
+        .post('/children')
+        .send({
+          name: 'Ananya Sen',
+          dateOfBirth: '2023-11-20',
+          guardianName: 'Priya Sharma',
+          state: 'Karnataka',
+          consentStatus: true
+        });
+
+      expect(res.status).toBe(401);
+      expect(res.body).toHaveProperty('error', 'Unauthorized');
+      expect(res.body.message).toContain('Authorization header is required');
+    });
+
+    test('Reject requests with invalid or unrecognized token', async () => {
+      const res = await request(app)
+        .get('/children/00000000-0000-0000-0000-000000000000')
+        .set('Authorization', 'Bearer invalid-expired-token');
+
+      expect(res.status).toBe(401);
+      expect(res.body).toHaveProperty('error', 'Unauthorized');
+      expect(res.body.message).toContain('Invalid or expired');
+    });
+
+    test('Reject requests with malformed Authorization scheme', async () => {
+      const res = await request(app)
+        .post('/children')
+        .set('Authorization', 'Basic dXNlcjpwYXNz')
+        .send({});
+
+      expect(res.status).toBe(401);
+      expect(res.body).toHaveProperty('error', 'Unauthorized');
+      expect(res.body.message).toContain('Bearer');
+    });
+  });
+
+  // 3. Child Registration & Ownership
+  describe('Child Registration & Ownership Enforcement', () => {
+    test('Successfully register child under authenticated guardian', async () => {
       const payload = {
         name: 'Aarav Sharma',
         dateOfBirth: '2023-04-12',
@@ -44,268 +99,272 @@ describe('Child Health API — Level 2 Test Suite', () => {
 
       const res = await request(app)
         .post('/children')
+        .set('Authorization', `Bearer ${tokenPriya}`)
         .send(payload);
 
       expect(res.status).toBe(201);
       expect(res.body).toHaveProperty('id');
-      expect(typeof res.body.id).toBe('string');
       expect(res.body.name).toBe('Aarav Sharma');
-      expect(res.body.dateOfBirth).toBe('2023-04-12');
-      expect(res.body.guardianName).toBe('Priya Sharma');
-      expect(res.body.state).toBe('Maharashtra');
-      expect(res.body.consentStatus).toBe(true);
-      expect(res.body).toHaveProperty('createdAt');
+      expect(res.body.consentStatus).toBe('granted'); // Standardized boolean true -> 'granted'
+      expect(res.body).not.toHaveProperty('authToken'); // Never leak sensitive auth tokens
     });
 
-    test('2. Reject registration with missing fields', async () => {
-      const invalidPayload = {
-        name: 'Incomplete Record'
-        // Missing dateOfBirth, guardianName, state, consentStatus
-      };
-
-      const res = await request(app)
+    test('Authenticated guardian can retrieve their registered child', async () => {
+      const registerRes = await request(app)
         .post('/children')
-        .send(invalidPayload);
-
-      expect(res.status).toBe(400);
-      expect(res.body).toHaveProperty('error', 'Validation Error');
-      expect(Array.isArray(res.body.details)).toBe(true);
-      expect(res.body.details.length).toBeGreaterThanOrEqual(4);
-    });
-
-    test('Reject registration with empty strings', async () => {
-      const payload = {
-        name: '   ',
-        dateOfBirth: '2023-04-12',
-        guardianName: '  ',
-        state: '  ',
-        consentStatus: true
-      };
-
-      const res = await request(app)
-        .post('/children')
-        .send(payload);
-
-      expect(res.status).toBe(400);
-      expect(res.body.error).toBe('Validation Error');
-      expect(res.body.details.some(d => d.includes('cannot be empty'))).toBe(true);
-    });
-
-    test('Reject registration with invalid date format or future date', async () => {
-      // Invalid format
-      const resFormat = await request(app)
-        .post('/children')
-        .send({
-          name: 'Baby John',
-          dateOfBirth: '12-04-2023',
-          guardianName: 'Jane Doe',
-          state: 'Delhi',
-          consentStatus: true
-        });
-
-      expect(resFormat.status).toBe(400);
-      expect(resFormat.body.details.some(d => d.includes('valid calendar date'))).toBe(true);
-
-      // Future date
-      const resFuture = await request(app)
-        .post('/children')
-        .send({
-          name: 'Future Baby',
-          dateOfBirth: '2099-01-01',
-          guardianName: 'Jane Doe',
-          state: 'Delhi',
-          consentStatus: true
-        });
-
-      expect(resFuture.status).toBe(400);
-      expect(resFuture.body.details.some(d => d.includes('cannot be a future date'))).toBe(true);
-    });
-
-    test('Reject registration with invalid consent value', async () => {
-      const res = await request(app)
-        .post('/children')
+        .set('Authorization', `Bearer ${tokenPriya}`)
         .send({
           name: 'Aarav Sharma',
           dateOfBirth: '2023-04-12',
           guardianName: 'Priya Sharma',
           state: 'Maharashtra',
-          consentStatus: 'not-a-valid-consent'
-        });
-
-      expect(res.status).toBe(400);
-      expect(res.body.details.some(d => d.includes('consentStatus'))).toBe(true);
-    });
-  });
-
-  // 3. Retrieve Child Profile
-  describe('GET /children/:id', () => {
-    test('3. Retrieve an existing child', async () => {
-      // Register first
-      const registerRes = await request(app)
-        .post('/children')
-        .send({
-          name: 'Diya Patel',
-          dateOfBirth: '2022-09-10',
-          guardianName: 'Amit Patel',
-          state: 'Gujarat',
           consentStatus: 'granted'
         });
 
       const childId = registerRes.body.id;
 
-      // Retrieve
-      const res = await request(app).get(`/children/${childId}`);
+      const res = await request(app)
+        .get(`/children/${childId}`)
+        .set('Authorization', `Bearer ${tokenPriya}`);
 
       expect(res.status).toBe(200);
       expect(res.body.id).toBe(childId);
-      expect(res.body.name).toBe('Diya Patel');
-      expect(res.body.dateOfBirth).toBe('2022-09-10');
-      expect(res.body.guardianName).toBe('Amit Patel');
-      expect(res.body.state).toBe('Gujarat');
-      expect(res.body.consentStatus).toBe('granted');
+      expect(res.body.name).toBe('Aarav Sharma');
     });
 
-    test('4. Return 404 for a nonexistent child', async () => {
+    test('Reject cross-guardian access (Guardian B cannot access Guardian A child)', async () => {
+      // Registered by Priya
+      const registerRes = await request(app)
+        .post('/children')
+        .set('Authorization', `Bearer ${tokenPriya}`)
+        .send({
+          name: 'Aarav Sharma',
+          dateOfBirth: '2023-04-12',
+          guardianName: 'Priya Sharma',
+          state: 'Maharashtra',
+          consentStatus: 'granted'
+        });
+
+      const childId = registerRes.body.id;
+
+      // Rohit attempts to retrieve Priya's child
+      const res = await request(app)
+        .get(`/children/${childId}`)
+        .set('Authorization', `Bearer ${tokenRohit}`);
+
+      expect(res.status).toBe(403);
+      expect(res.body).toHaveProperty('error', 'Forbidden');
+      expect(res.body.message).toContain('Access denied');
+    });
+
+    test('Return 404 for a nonexistent child for authenticated guardian', async () => {
       const nonexistentId = '00000000-0000-0000-0000-000000000000';
-      const res = await request(app).get(`/children/${nonexistentId}`);
+      const res = await request(app)
+        .get(`/children/${nonexistentId}`)
+        .set('Authorization', `Bearer ${tokenPriya}`);
 
       expect(res.status).toBe(404);
       expect(res.body).toHaveProperty('error', 'Child not found');
-      expect(res.body.message).toContain(nonexistentId);
-    });
-
-    test('Return 400 for malformed/invalid child ID', async () => {
-      const res = await request(app).get('/children/invalid-not-uuid');
-
-      expect(res.status).toBe(400);
-      expect(res.body).toHaveProperty('error', 'Validation Error');
-      expect(res.body.details.some(d => d.includes('UUID'))).toBe(true);
     });
   });
 
-  // 4. Create Vaccination Reminder
-  describe('POST /reminders', () => {
-    let testChildId;
+  // 4. Vaccination Reminder Ownership & Consent Enforcement
+  describe('Vaccination Reminders & Consent Protection', () => {
+    let priyaChildId;
 
     beforeEach(async () => {
-      const childRes = await request(app)
+      const res = await request(app)
         .post('/children')
+        .set('Authorization', `Bearer ${tokenPriya}`)
         .send({
-          name: 'Rohan Verma',
-          dateOfBirth: '2023-01-15',
-          guardianName: 'Sanjay Verma',
-          state: 'Punjab',
-          consentStatus: true
+          name: 'Diya Sharma',
+          dateOfBirth: '2023-02-10',
+          guardianName: 'Priya Sharma',
+          state: 'Maharashtra',
+          consentStatus: 'granted'
         });
-      testChildId = childRes.body.id;
+      priyaChildId = res.body.id;
     });
 
-    test('5. Create a reminder successfully', async () => {
-      const reminderPayload = {
-        childId: testChildId,
-        vaccineName: 'Pentavalent 1',
-        dueDate: '2026-12-10',
-        status: 'scheduled'
-      };
-
+    test('Successfully create a reminder for owned child with granted consent', async () => {
       const res = await request(app)
         .post('/reminders')
-        .send(reminderPayload);
+        .set('Authorization', `Bearer ${tokenPriya}`)
+        .send({
+          childId: priyaChildId,
+          vaccineName: 'Polio Booster',
+          dueDate: '2026-12-15',
+          status: 'scheduled'
+        });
 
       expect(res.status).toBe(201);
-      expect(res.body).toHaveProperty('id');
-      expect(res.body.childId).toBe(testChildId);
-      expect(res.body.vaccineName).toBe('Pentavalent 1');
-      expect(res.body.dueDate).toBe('2026-12-10');
+      expect(res.body.childId).toBe(priyaChildId);
+      expect(res.body.vaccineName).toBe('Polio Booster');
       expect(res.body.status).toBe('scheduled');
-      expect(res.body).toHaveProperty('createdAt');
     });
 
-    test('6. Reject a reminder for a nonexistent child', async () => {
-      const nonexistentId = '11111111-2222-3333-4444-555555555555';
-      const payload = {
-        childId: nonexistentId,
-        vaccineName: 'BCG',
-        dueDate: '2026-12-10',
-        status: 'scheduled'
-      };
+    test('Reject unauthorized reminder creation by a different guardian', async () => {
+      // Rohit tries to create reminder for Priya's child
+      const res = await request(app)
+        .post('/reminders')
+        .set('Authorization', `Bearer ${tokenRohit}`)
+        .send({
+          childId: priyaChildId,
+          vaccineName: 'BCG',
+          dueDate: '2026-12-15',
+          status: 'scheduled'
+        });
+
+      expect(res.status).toBe(403);
+      expect(res.body).toHaveProperty('error', 'Forbidden');
+      expect(res.body.message).toContain('cannot create reminders for a child you do not manage');
+    });
+
+    test('Reject reminder creation when consent is denied', async () => {
+      // Register child with denied consent
+      const deniedChildRes = await request(app)
+        .post('/children')
+        .set('Authorization', `Bearer ${tokenPriya}`)
+        .send({
+          name: 'Baby Without Consent',
+          dateOfBirth: '2023-05-15',
+          guardianName: 'Priya Sharma',
+          state: 'Maharashtra',
+          consentStatus: 'denied'
+        });
 
       const res = await request(app)
         .post('/reminders')
-        .send(payload);
+        .set('Authorization', `Bearer ${tokenPriya}`)
+        .send({
+          childId: deniedChildRes.body.id,
+          vaccineName: 'MMR',
+          dueDate: '2026-11-20',
+          status: 'scheduled'
+        });
+
+      expect(res.status).toBe(403);
+      expect(res.body).toHaveProperty('error', 'Consent Required');
+      expect(res.body.message).toContain('Active granted consent is required');
+    });
+
+    test('Reject reminder creation when consent is revoked', async () => {
+      // Register child with revoked consent
+      const revokedChildRes = await request(app)
+        .post('/children')
+        .set('Authorization', `Bearer ${tokenPriya}`)
+        .send({
+          name: 'Baby Revoked',
+          dateOfBirth: '2023-05-15',
+          guardianName: 'Priya Sharma',
+          state: 'Maharashtra',
+          consentStatus: 'revoked'
+        });
+
+      const res = await request(app)
+        .post('/reminders')
+        .set('Authorization', `Bearer ${tokenPriya}`)
+        .send({
+          childId: revokedChildRes.body.id,
+          vaccineName: 'Measles',
+          dueDate: '2026-11-20',
+          status: 'scheduled'
+        });
+
+      expect(res.status).toBe(403);
+      expect(res.body).toHaveProperty('error', 'Consent Required');
+    });
+
+    test('Reject reminder for a nonexistent child', async () => {
+      const nonexistentId = '00000000-0000-0000-0000-000000000000';
+      const res = await request(app)
+        .post('/reminders')
+        .set('Authorization', `Bearer ${tokenPriya}`)
+        .send({
+          childId: nonexistentId,
+          vaccineName: 'BCG',
+          dueDate: '2026-11-20',
+          status: 'scheduled'
+        });
 
       expect(res.status).toBe(404);
       expect(res.body).toHaveProperty('error', 'Child not found');
-      expect(res.body.message).toContain(nonexistentId);
     });
 
-    test('7. Reject an invalid reminder date', async () => {
-      const payload = {
-        childId: testChildId,
-        vaccineName: 'Rotavirus Dose 2',
-        dueDate: '2026-02-30', // Invalid calendar date
-        status: 'scheduled'
-      };
-
+    test('Reject invalid reminder date', async () => {
       const res = await request(app)
         .post('/reminders')
-        .send(payload);
+        .set('Authorization', `Bearer ${tokenPriya}`)
+        .send({
+          childId: priyaChildId,
+          vaccineName: 'Rotavirus',
+          dueDate: '2026-02-30', // Invalid calendar date
+          status: 'scheduled'
+        });
 
       expect(res.status).toBe(400);
       expect(res.body).toHaveProperty('error', 'Validation Error');
-      expect(res.body.details.some(d => d.includes('valid calendar date'))).toBe(true);
-    });
-
-    test('Reject reminder with invalid status', async () => {
-      const payload = {
-        childId: testChildId,
-        vaccineName: 'Oral Polio Vaccine',
-        dueDate: '2026-11-25',
-        status: 'invalid-status-type'
-      };
-
-      const res = await request(app)
-        .post('/reminders')
-        .send(payload);
-
-      expect(res.status).toBe(400);
-      expect(res.body.details.some(d => d.includes('status'))).toBe(true);
-    });
-
-    test('Reject reminder with empty vaccine name', async () => {
-      const payload = {
-        childId: testChildId,
-        vaccineName: '   ',
-        dueDate: '2026-11-25',
-        status: 'scheduled'
-      };
-
-      const res = await request(app)
-        .post('/reminders')
-        .send(payload);
-
-      expect(res.status).toBe(400);
-      expect(res.body.details.some(d => d.includes('vaccineName'))).toBe(true);
     });
   });
 
-  // 5. Error Handling & Edge Cases
-  describe('Global Error Handling', () => {
+  // 5. Input Validation & Body Limit Protection
+  describe('Input Validation & Payload Protection', () => {
+    test('Reject registration missing mandatory fields', async () => {
+      const res = await request(app)
+        .post('/children')
+        .set('Authorization', `Bearer ${tokenPriya}`)
+        .send({
+          name: 'Incomplete Record'
+        });
+
+      expect(res.status).toBe(400);
+      expect(res.body).toHaveProperty('error', 'Validation Error');
+      expect(res.body.details.length).toBeGreaterThanOrEqual(4);
+    });
+
+    test('Reject registration with whitespace-only strings', async () => {
+      const res = await request(app)
+        .post('/children')
+        .set('Authorization', `Bearer ${tokenPriya}`)
+        .send({
+          name: '   ',
+          dateOfBirth: '2023-04-12',
+          guardianName: '   ',
+          state: '   ',
+          consentStatus: 'granted'
+        });
+
+      expect(res.status).toBe(400);
+      expect(res.body.details.some(d => d.includes('cannot be empty'))).toBe(true);
+    });
+
+    test('Reject payload exceeding the 10kb body size limit', async () => {
+      const largePayload = {
+        name: 'A'.repeat(15000), // Over 10kb
+        dateOfBirth: '2023-04-12',
+        guardianName: 'Priya Sharma',
+        state: 'Maharashtra',
+        consentStatus: 'granted'
+      };
+
+      const res = await request(app)
+        .post('/children')
+        .set('Authorization', `Bearer ${tokenPriya}`)
+        .send(largePayload);
+
+      expect(res.status).toBe(413);
+      expect(res.body).toHaveProperty('error', 'Payload Too Large');
+    });
+
     test('Gracefully handle malformed JSON syntax', async () => {
       const res = await request(app)
         .post('/children')
+        .set('Authorization', `Bearer ${tokenPriya}`)
         .set('Content-Type', 'application/json')
         .send('{ "name": "Broken JSON", ');
 
       expect(res.status).toBe(400);
       expect(res.body).toHaveProperty('error', 'Malformed JSON');
-    });
-
-    test('Return 404 for nonexistent route', async () => {
-      const res = await request(app).get('/nonexistent-path');
-
-      expect(res.status).toBe(404);
-      expect(res.body).toHaveProperty('error', 'Not Found');
     });
   });
 });

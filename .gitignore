@@ -48,3 +48,4 @@ coverage/
 *.sqlite3
 data/
 
+postman/

@@ -2,7 +2,7 @@ const childService = require('../services/childService');
 const { validateChildRegistration, validateIdParam } = require('../utils/validator');
 
 /**
- * Registers a new child profile
+ * Registers a new child profile associated with the authenticated guardian
  * POST /children
  */
 function registerChild(req, res, next) {
@@ -15,7 +15,7 @@ function registerChild(req, res, next) {
       });
     }
 
-    const createdChild = childService.registerChild(req.body);
+    const createdChild = childService.registerChild(req.body, req.guardian.id);
     return res.status(201).json(createdChild);
   } catch (err) {
     next(err);
@@ -23,7 +23,7 @@ function registerChild(req, res, next) {
 }
 
 /**
- * Retrieves a child profile by ID
+ * Retrieves a child profile by ID with ownership enforcement
  * GET /children/:id
  */
 function getChildById(req, res, next) {
@@ -46,7 +46,24 @@ function getChildById(req, res, next) {
       });
     }
 
-    return res.status(200).json(child);
+    // Ownership check: Enforce that only the guardian who registered the child can view
+    if (child.guardianId !== req.guardian.id) {
+      return res.status(403).json({
+        error: 'Forbidden',
+        message: "Access denied: You do not have permission to view this child's profile."
+      });
+    }
+
+    // Return sanitized data exposing only required information
+    return res.status(200).json({
+      id: child.id,
+      name: child.name,
+      dateOfBirth: child.dateOfBirth,
+      guardianName: child.guardianName,
+      state: child.state,
+      consentStatus: child.consentStatus,
+      createdAt: child.createdAt
+    });
   } catch (err) {
     next(err);
   }

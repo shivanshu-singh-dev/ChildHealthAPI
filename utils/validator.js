@@ -85,6 +85,21 @@ function isValidConsentStatus(val) {
 }
 
 /**
+ * Normalizes consent status to standardized lowercase string
+ * @param {any} val 
+ * @returns {string|null}
+ */
+function normalizeConsentStatus(val) {
+  if (typeof val === 'boolean') {
+    return val ? 'granted' : 'denied';
+  }
+  if (typeof val === 'string' && ALLOWED_CONSENT_STRINGS.has(val.trim().toLowerCase())) {
+    return val.trim().toLowerCase();
+  }
+  return null;
+}
+
+/**
  * Validates reminder status string
  * @param {any} val 
  * @returns {boolean}
@@ -97,7 +112,7 @@ function isValidReminderStatus(val) {
 /**
  * Validates child registration payload
  * @param {object} data 
- * @returns {{ isValid: boolean, errors: string[] }}
+ * @returns {{ isValid: boolean, errors: string[], normalizedConsent?: string }}
  */
 function validateChildRegistration(data) {
   const errors = [];
@@ -145,15 +160,19 @@ function validateChildRegistration(data) {
   }
 
   // Consent Status validation
+  let normalizedConsent = null;
   if (!('consentStatus' in data) || data.consentStatus === null || data.consentStatus === undefined) {
     errors.push("'consentStatus' is required");
   } else if (!isValidConsentStatus(data.consentStatus)) {
     errors.push("'consentStatus' must be a boolean (true/false) or one of: 'granted', 'denied', 'pending', 'revoked'");
+  } else {
+    normalizedConsent = normalizeConsentStatus(data.consentStatus);
   }
 
   return {
     isValid: errors.length === 0,
-    errors
+    errors,
+    normalizedConsent
   };
 }
 
@@ -231,6 +250,7 @@ module.exports = {
   isValidDateFormat,
   isDateNotInFuture,
   isValidConsentStatus,
+  normalizeConsentStatus,
   isValidReminderStatus,
   validateChildRegistration,
   validateReminderCreation,

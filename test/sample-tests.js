@@ -7,7 +7,7 @@ let baseUrl;
 
 async function runTests() {
   process.env.NODE_ENV = 'test';
-  console.log('\n🚀 Starting Child Health API Automated Test Suite (Level 1 & 2)\n');
+  console.log('\n🚀 Starting Child Health API Automated Test Suite\n');
 
   // Start app on random available port
   server = http.createServer(app);
@@ -22,6 +22,11 @@ async function runTests() {
 
   let passed = 0;
   let failed = 0;
+
+  const authHeaders = {
+    'Content-Type': 'application/json',
+    'Authorization': 'Bearer mock-token-priya'
+  };
 
   async function assertTest(name, fn) {
     try {
@@ -38,7 +43,7 @@ async function runTests() {
   try {
     resetDatabase();
 
-    // 1. Health check
+    // 1. Health check (Public)
     await assertTest('GET /health returns 200 and UP status', async () => {
       const res = await fetch(`${baseUrl}/health`);
       if (res.status !== 200) throw new Error(`Expected 200, got ${res.status}`);
@@ -60,7 +65,7 @@ async function runTests() {
 
       const res = await fetch(`${baseUrl}/children`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: authHeaders,
         body: JSON.stringify(payload)
       });
 
@@ -72,7 +77,7 @@ async function runTests() {
       if (data.dateOfBirth !== '2023-04-12') throw new Error('dateOfBirth mismatch');
       if (data.guardianName !== 'Priya Sharma') throw new Error('guardianName mismatch');
       if (data.state !== 'Maharashtra') throw new Error('state mismatch');
-      if (data.consentStatus !== true) throw new Error('consentStatus mismatch');
+      if (data.consentStatus !== 'granted') throw new Error('consentStatus mismatch');
       if (!data.createdAt) throw new Error('createdAt timestamp missing');
 
       registeredChildId = data.id;
@@ -80,7 +85,9 @@ async function runTests() {
 
     // 3. Retrieve registered child
     await assertTest('GET /children/:id retrieves existing child profile (200 OK)', async () => {
-      const res = await fetch(`${baseUrl}/children/${registeredChildId}`);
+      const res = await fetch(`${baseUrl}/children/${registeredChildId}`, {
+        headers: { 'Authorization': 'Bearer mock-token-priya' }
+      });
       if (res.status !== 200) throw new Error(`Expected 200, got ${res.status}`);
       const data = await res.json();
       if (data.id !== registeredChildId) throw new Error('Retrieved wrong child ID');
@@ -90,7 +97,9 @@ async function runTests() {
     // 4. Retrieve non-existent child
     await assertTest('GET /children/:id returns 404 for non-existent child', async () => {
       const fakeId = '00000000-0000-0000-0000-000000000000';
-      const res = await fetch(`${baseUrl}/children/${fakeId}`);
+      const res = await fetch(`${baseUrl}/children/${fakeId}`, {
+        headers: { 'Authorization': 'Bearer mock-token-priya' }
+      });
       if (res.status !== 404) throw new Error(`Expected 404, got ${res.status}`);
       const data = await res.json();
       if (!data.error) throw new Error('Expected error message in response');
@@ -100,12 +109,11 @@ async function runTests() {
     await assertTest('POST /children returns 400 when required fields are missing', async () => {
       const incompletePayload = {
         name: 'Incomplete Child'
-        // Missing dateOfBirth, guardianName, state, consentStatus
       };
 
       const res = await fetch(`${baseUrl}/children`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: authHeaders,
         body: JSON.stringify(incompletePayload)
       });
 
@@ -120,7 +128,7 @@ async function runTests() {
     await assertTest('POST /children returns 400 for invalid date format', async () => {
       const invalidDatePayload = {
         name: 'Test Baby',
-        dateOfBirth: '12-04-2023', // DD-MM-YYYY instead of YYYY-MM-DD
+        dateOfBirth: '12-04-2023',
         guardianName: 'Test Parent',
         state: 'Delhi',
         consentStatus: 'granted'
@@ -128,7 +136,7 @@ async function runTests() {
 
       const res = await fetch(`${baseUrl}/children`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: authHeaders,
         body: JSON.stringify(invalidDatePayload)
       });
 
@@ -147,7 +155,7 @@ async function runTests() {
 
       const res = await fetch(`${baseUrl}/children`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: authHeaders,
         body: JSON.stringify(futureDatePayload)
       });
 
@@ -155,7 +163,6 @@ async function runTests() {
     });
 
     // 8. Create reminder for existing child - Valid
-    let reminderId;
     await assertTest('POST /reminders successfully creates reminder for existing child (201 Created)', async () => {
       const reminderPayload = {
         childId: registeredChildId,
@@ -166,7 +173,7 @@ async function runTests() {
 
       const res = await fetch(`${baseUrl}/reminders`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: authHeaders,
         body: JSON.stringify(reminderPayload)
       });
 
@@ -179,11 +186,9 @@ async function runTests() {
       if (data.dueDate !== '2026-12-15') throw new Error('dueDate mismatch');
       if (data.status !== 'scheduled') throw new Error('status mismatch');
       if (!data.createdAt) throw new Error('createdAt timestamp missing');
-
-      reminderId = data.id;
     });
 
-    // 9. Create reminder for non-existent child (Verify child existence check)
+    // 9. Create reminder for non-existent child
     await assertTest('POST /reminders returns 404 when childId does not exist', async () => {
       const fakeReminderPayload = {
         childId: '00000000-0000-0000-0000-000000000000',
@@ -194,7 +199,7 @@ async function runTests() {
 
       const res = await fetch(`${baseUrl}/reminders`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: authHeaders,
         body: JSON.stringify(fakeReminderPayload)
       });
 
@@ -209,12 +214,11 @@ async function runTests() {
     await assertTest('POST /reminders returns 400 when fields are missing', async () => {
       const invalidReminderPayload = {
         childId: registeredChildId
-        // Missing vaccineName, dueDate, status
       };
 
       const res = await fetch(`${baseUrl}/reminders`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: authHeaders,
         body: JSON.stringify(invalidReminderPayload)
       });
 
@@ -226,13 +230,13 @@ async function runTests() {
       const invalidDateReminder = {
         childId: registeredChildId,
         vaccineName: 'Measles',
-        dueDate: '2026/12/31', // Slash format instead of hyphen
+        dueDate: '2026/12/31',
         status: 'scheduled'
       };
 
       const res = await fetch(`${baseUrl}/reminders`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: authHeaders,
         body: JSON.stringify(invalidDateReminder)
       });
 
@@ -243,8 +247,11 @@ async function runTests() {
     await assertTest('Malformed JSON request body returns 400 Bad Request', async () => {
       const res = await fetch(`${baseUrl}/children`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: '{ "name": "Broken JSON", ' // Intentional syntax error
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer mock-token-priya'
+        },
+        body: '{ "name": "Broken JSON", '
       });
 
       if (res.status !== 400) throw new Error(`Expected 400, got ${res.status}`);

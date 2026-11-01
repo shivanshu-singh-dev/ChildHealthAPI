@@ -3,13 +3,16 @@ const reminderRepository = require('../database/reminderRepository');
 const childRepository = require('../database/childRepository');
 
 /**
- * Creates a vaccination reminder after verifying the child exists
+ * Creates a vaccination reminder after verifying existence, ownership, and active consent
  * @param {object} reminderData 
- * @returns {{ notFound?: boolean, success: boolean, reminder?: object, message?: string }}
+ * @param {string} guardianId 
+ * @returns {{ notFound?: boolean, forbidden?: boolean, consentDenied?: boolean, success: boolean, reminder?: object, message?: string }}
  */
-function createReminder(reminderData) {
-  const childExists = childRepository.exists(reminderData.childId.trim());
-  if (!childExists) {
+function createReminder(reminderData, guardianId) {
+  const child = childRepository.findById(reminderData.childId.trim());
+
+  // 1. Verify child existence
+  if (!child) {
     return {
       success: false,
       notFound: true,
@@ -17,6 +20,25 @@ function createReminder(reminderData) {
     };
   }
 
+  // 2. Enforce guardian ownership
+  if (child.guardianId !== guardianId) {
+    return {
+      success: false,
+      forbidden: true,
+      message: 'Access denied: You cannot create reminders for a child you do not manage.'
+    };
+  }
+
+  // 3. Enforce active consent
+  if (child.consentStatus !== 'granted') {
+    return {
+      success: false,
+      consentDenied: true,
+      message: `Cannot create reminder: Active granted consent is required. Current consent status is '${child.consentStatus}'.`
+    };
+  }
+
+  // 4. Create and persist reminder
   const newReminder = {
     id: crypto.randomUUID(),
     childId: reminderData.childId.trim(),
