@@ -25,7 +25,7 @@ A robust, modular REST API built with **Node.js**, **Express.js**, and persisten
   - Passwords are hashed using `bcryptjs` with a work factor of 10.
   - Enforces a maximum password length limit of **72 bytes** (`Buffer.byteLength(password, 'utf8') <= 72`) to eliminate silent truncation vulnerabilities inherent to bcrypt.
   - Mitigates timing-based account enumeration attacks by executing a dummy bcrypt comparison when an email is not found.
-- **Strict Rate Limiting on Auth**: Both `POST /auth/login` and `POST /auth/register` are protected by a dedicated rate limiter (5 attempts per 15 minutes) to prevent brute-force attacks and automated registration spam.
+- **Strict Rate Limiting on Auth**: Both `POST /auth/login` and `POST /auth/register` are protected by a dedicated rate limiter (15 attempts per 15 minutes, configurable via `AUTH_RATE_LIMIT_MAX`) to prevent brute-force attacks and automated registration spam.
 - **Preserved Ownership Architecture**: The verified subject claim `decoded.sub` is mapped to `req.guardian = { id: decoded.sub }`. The client is never trusted to specify `guardianId` for authorization.
 - **Pre-seeded Test Accounts**:
   | Username / Email | Password | Guardian ID | Role / Test Purpose |
@@ -46,6 +46,52 @@ A robust, modular REST API built with **Node.js**, **Express.js**, and persisten
 - **Request Body Size Limits**: Enforces a strict `10kb` body size limit on JSON payloads to prevent memory exhaustion and payload injection attacks.
 - **Rate Limiting**: Protects endpoints against brute-force and denial-of-service attempts via `express-rate-limit` with standard HTTP rate limit headers.
 - **Centralized Error Boundary**: Sanitizes operational and database errors to prevent leaking internal stack traces or SQL statements.
+
+---
+
+## 🗄️ Database Architecture & Entity-Relationship Model
+
+The application utilizes persistent **SQLite** via the high-performance, synchronous `better-sqlite3` driver.
+
+- **Referential Integrity**: `PRAGMA foreign_keys = ON;` is enforced on every database connection, ensuring relational constraints and cascading deletes (`ON DELETE CASCADE`).
+- **Concurrent Access & Durability**: `PRAGMA journal_mode = WAL;` (Write-Ahead Logging) is enabled for disk storage, allowing concurrent readers alongside writers, fast transactions, and crash safety.
+- **SQL Injection Defense**: 100% of data access queries across repositories use parameterized prepared statements (`db.prepare(...)`).
+- **Indexes**: Dedicated B-tree indexes (`idx_guardians_email`, `idx_children_guardian_id`, `idx_reminders_child_id`) optimize lookup performance.
+
+```mermaid
+erDiagram
+    GUARDIANS ||--o{ CHILDREN : "registers / owns"
+    CHILDREN ||--o{ VACCINATION_REMINDERS : "has"
+
+    GUARDIANS {
+        TEXT id PK "Primary Key (UUID or seeded ID)"
+        TEXT name "Guardian full name (2-100 chars)"
+        TEXT email UK "Unique email address"
+        TEXT password_hash "Bcrypt hash (10 salt rounds)"
+        TEXT auth_token "Optional legacy token"
+        TEXT created_at "ISO 8601 creation timestamp"
+    }
+
+    CHILDREN {
+        TEXT id PK "Primary Key (UUID)"
+        TEXT guardian_id FK "Foreign Key -> GUARDIANS(id) ON DELETE CASCADE"
+        TEXT name "Child full name (2-100 chars)"
+        TEXT date_of_birth "YYYY-MM-DD (cannot be future date)"
+        TEXT guardian_name "Guardian contact name"
+        TEXT state "State or province"
+        TEXT consent_status "granted | denied | pending | revoked"
+        TEXT created_at "ISO 8601 creation timestamp"
+    }
+
+    VACCINATION_REMINDERS {
+        TEXT id PK "Primary Key (UUID)"
+        TEXT child_id FK "Foreign Key -> CHILDREN(id) ON DELETE CASCADE"
+        TEXT vaccine_name "Vaccine name (2-100 chars)"
+        TEXT due_date "YYYY-MM-DD calendar date"
+        TEXT status "scheduled | completed | pending | cancelled | overdue"
+        TEXT created_at "ISO 8601 creation timestamp"
+    }
+```
 
 ---
 
@@ -85,7 +131,9 @@ ChildHealthAPI/
 ├── test/
 │   └── sample-tests.js             # Standalone runner test script
 ├── data/                           # Directory storing SQLite database file (gitignored)
+├── .env.example                    # Template environment variables
 ├── .gitignore                      # Git exclusion rules
+├── ChildHealthAPI.postman_collection.json # Exportable Postman collection (15 tests)
 ├── app.js                          # Express application pipeline & middleware configuration
 ├── server.js                       # HTTP server bootstrap and graceful shutdown hooks
 ├── package.json                    # Project metadata, scripts, and dependencies
@@ -108,6 +156,7 @@ Optional environment variables:
 | `CORS_ORIGIN` | `*` | Allowed CORS origins |
 | `RATE_LIMIT_MAX` | `100` | Max requests per global rate limit window |
 | `RATE_LIMIT_WINDOW_MS` | `900000` (15 mins) | Duration for rate limit window |
+| `AUTH_RATE_LIMIT_MAX` | `15` | Max requests per auth rate limit window (login/register) |
 
 ---
 
@@ -138,19 +187,28 @@ http://localhost:3000
 
 ---
 
-## 🧪 Automated Testing
+## 🧪 Testing
 
-Execute the comprehensive test suite with Jest and Supertest:
+The project provides three testing options depending on your workflow:
+
+### 1. Comprehensive Automated Suite (Jest & Supertest)
+Runs 21 automated integration tests against an isolated in-memory SQLite database (`:memory:`):
 ```bash
 npm test
 ```
-
-Execute tests with coverage:
+Run with coverage:
 ```bash
 npm run test:coverage
 ```
 
-Tests run against an isolated in-memory SQLite database (`:memory:`), ensuring zero test side effects on production data.
+### 2. Standalone End-to-End Suite (Native Node.js HTTP)
+Runs 14 automated tests spinning up an ephemeral local server and issuing real TCP/IP HTTP requests:
+```bash
+node test/sample-tests.js
+```
+
+### 3. Interactive Postman Collection
+Import `ChildHealthAPI.postman_collection.json` directly into Postman. It includes 15 pre-configured requests with automated test assertions, dynamic token capture, and BOLA/IDOR security checks against your running server (`http://localhost:3000`).
 
 ---
 
